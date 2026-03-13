@@ -1,140 +1,124 @@
-DOC’S WAREHOUSE INVENTORY
+DCS Server Setup
+1. Desanitize Mission Scripting
 
-A dynamic logistics monitoring script for DCS World that scans all BLUE-controlled airfields and reports supply shortages using a priority-based system.
+Edit the following file on your server:
 
-Overview
+Saved Games\DCS\Scripts\MissionScripting.lua
 
-Doc’s Warehouse Inventory is designed for mission makers and server operators who want better visibility into logistics without manually tracking warehouse data.
+Comment out the following lines:
 
-With a single F10 command, the script:
+-- sanitizeModule('os')
+-- sanitizeModule('io')
+-- sanitizeModule('lfs')
 
-Automatically scans all BLUE airfields
+This allows the mission to access external scripts such as DCSServerBot.
 
-Checks fuel levels
+Mission Editor Installation
+Step 1 — Load DCSServerBot
 
-Checks all stocked weapons
+Create a trigger:
 
-Filters out items above threshold
+TYPE
 
-Categorizes shortages into:
+MISSION START
 
-Critical
-Medium
-Low
+ACTION
 
-Sorts items numerically (lowest stock first)
+DO SCRIPT
 
-Cleans weapon names for readability
+Paste:
 
-Auto-detects weapon category (Missile / Bomb / Rocket)
+dofile(lfs.writedir() .. 'Scripts/net/DCSServerBot/DCSServerBot.lua')
+Step 2 — Load the Warehouse Script
 
-No need to manually define airfields.
-No need to hardcode weapon names.
+Create another trigger:
 
-The script dynamically adapts to captured airfields and changing mission states.
+TYPE
 
-Features
+MISSION START
 
-F10 menu trigger
+ACTION
 
-Automatic BLUE coalition detection
+DO SCRIPT FILE
 
-Dynamic airfield scanning
+Select:
 
-Fuel monitoring
+warehouseMonitor.lua
+In-Game Usage
 
-Global minimum thresholds
+Once the mission starts the script will automatically begin monitoring warehouses.
 
-Priority-based reporting
-
-Clean formatted output
-
-Zero clutter (only shows shortages)
-
-Default Thresholds
-
-These can be adjusted inside the script.
-
-Fuel
-
-Critical: Below configured critical level
-
-Medium: Below configured medium level
-
-Low: Below configured low level
-
-(Default example: Minimum fuel alert at 25,000)
-
-Weapons
-
-Minimum stock example: 25
-
-Sorted from lowest quantity to highest
-
-Categorized automatically
-
-Only items below threshold are displayed.
-
-Installation
-
-Open your mission in Mission Editor.
-
-Create a new trigger:
-
-Type: MISSION START
-
-Action: DO SCRIPT FILE
-
-Select the script file.
-
-Save mission.
-
-An F10 menu option will appear in-game to run the warehouse check.
-
-Usage
-
-In-game:
+Players and admins can manually check supplies using:
 
 F10 → Other → Check Warehouse Inventory
 
-The script will display a formatted report listing:
+This will display a full supply report in-game.
 
-Airfield
-Priority level
-Item(s) needing resupply
+Configuration
 
-If everything is above threshold, nothing is displayed.
+All configuration is located at the top of the script.
 
-Planned Features
+Example:
 
-Discord webhook integration for automatic alerts
+local EnableDiscord = true
+local DiscordChannel = '12345678'
+local LogisticsRole = "<@&12345678>"
+EnableDiscord
+true  = Discord alerts enabled
+false = Standalone in-game mode only
+CheckInterval
+local CheckInterval = 300
 
-Automated logistics task generation
+How often warehouses are scanned.
 
-Persistent resupply tracking
+Examples:
 
-Scheduled automatic checks
+300 = 5 minutes
+600 = 10 minutes (recommended)
+Weapon Thresholds
+WeaponThresholds = {
+LOW = 60,
+MEDIUM = 40,
+CRITICAL = 20
+}
 
-Optional red coalition support
+Defines supply warning levels for weapons.
 
-Intended Use
+Fuel Thresholds
+FuelThresholds = {
+LOW = 50000,
+MEDIUM = 25000,
+CRITICAL = 10000
+}
 
-Multiplayer servers
+Defines supply warning levels for fuel.
 
-Persistent campaign missions
+Example Discord Alerts
+Critical Shortage
+🚨 Logistics Critical
+@Logistics
 
-Dynamic frontline operations
+Kobuleti
+AIM-120C — 4
+GBU-12 — 2
+Supply Restored
+✅ Supply Restored
 
-Logistics-focused gameplay
+Batumi
+Jet Fuel Restored
+AIM-120C Restored
+Use Cases
 
-Combined Arms coordination
+This script is ideal for:
 
-Requirements
+• Persistent multiplayer servers
+• Logistics-focused gameplay
+• Dynamic campaign missions
+• Training environments
+• Event missions with supply management
 
-DCS World with warehouse system enabled
+License
 
-Airfields using active warehouse logic
+Free to use, modify, and share.
 
-Author
-
-DOC
+Credit to Doc ✪ is appreciated but not required.
