@@ -1,3 +1,45 @@
+DCS Warehouse Logistics Monitor
+
+A lightweight warehouse monitoring script for DCS World that tracks supply levels at BLUE coalition airbases and reports shortages in-game and optionally to Discord.
+
+Designed for persistent multiplayer servers, logistics gameplay, and dynamic campaigns.
+
+Features
+
+• Automatic warehouse monitoring
+• Configurable supply thresholds
+• In-game F10 menu supply report
+• Optional Discord alerts via DCSServerBot
+• Anti-spam alert system (only reports changes)
+
+Alert Levels
+
+🚨 CRITICAL
+• Pings Logistics role in Discord
+• Indicates immediate resupply needed
+
+⚠ MEDIUM
+• Discord notification only
+• Warns supply levels are dropping
+
+✅ RECOVERED
+• Notification when supplies are restored
+
+Requirements
+
+This script optionally integrates with:
+
+DCSServerBot
+
+GitHub:
+https://github.com/Special-K-s-Flightsim-Bots/DCSServerBot
+
+Important
+
+If Discord integration is enabled, DCSServerBot must be installed and running.
+
+The script can also run completely standalone without Discord.
+
 DCS Server Setup
 1. Desanitize Mission Scripting
 
