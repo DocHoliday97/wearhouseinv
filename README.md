@@ -1,166 +1,213 @@
-DCS Warehouse Logistics Monitor
+# DCS Warehouse Logistics Monitor
 
-A lightweight warehouse monitoring script for DCS World that tracks supply levels at BLUE coalition airbases and reports shortages in-game and optionally to Discord.
+A warehouse monitoring script for DCS World that watches BLUE coalition airbases, detects supply shortages, and reports them in-game or to Discord.
 
-Designed for persistent multiplayer servers, logistics gameplay, and dynamic campaigns.
+This is intended for persistent multiplayer servers, logistics-heavy missions, and dynamic campaign environments.
 
-Features
+## Features
 
-• Automatic warehouse monitoring
-• Configurable supply thresholds
-• In-game F10 menu supply report
-• Optional Discord alerts via DCSServerBot
-• Anti-spam alert system (only reports changes)
+- Automatic warehouse checks on a timer
+- Optional Discord alerts through DCSServerBot
+- Standalone mode with no Discord dependency
+- In-game F10 report menu
+- Short, prioritized in-game shortage summary
+- Full Discord embeds for detailed shortage lists
+- Anti-spam logic that only alerts on state changes
+- Configurable thresholds for weapons and fuel
+- Optional in-game debug output
 
-Alert Levels
+## Alert Levels
 
-🚨 CRITICAL
-• Pings Logistics role in Discord
-• Indicates immediate resupply needed
+- `CRITICAL`: highest priority, pings the configured Discord role
+- `MEDIUM`: warning level, Discord notification without role ping
+- `RECOVERED`: sent when stock returns from a shortage state
 
-⚠ MEDIUM
-• Discord notification only
-• Warns supply levels are dropping
+## Requirements
 
-✅ RECOVERED
-• Notification when supplies are restored
+Discord support uses DCSServerBot:
 
-Requirements
-
-This script optionally integrates with:
-
-DCSServerBot
-
-GitHub:
 https://github.com/Special-K-s-Flightsim-Bots/DCSServerBot
 
-Important
+If `EnableDiscord = true`, DCSServerBot must be installed and loaded in the mission.
 
-If Discord integration is enabled, DCSServerBot must be installed and running.
+If `EnableDiscord = false`, the script can run fully standalone with in-game reporting only.
 
-The script can also run completely standalone without Discord.
+## DCS Server Setup
 
-DCS Server Setup
-1. Desanitize Mission Scripting
+### 1. Desanitize mission scripting
 
-Edit the following file on your server:
+Edit this file on the server:
 
-Saved Games\DCS\Scripts\MissionScripting.lua
+`Saved Games\DCS\Scripts\MissionScripting.lua`
 
-Comment out the following lines:
+Comment out these lines:
 
+```lua
 -- sanitizeModule('os')
 -- sanitizeModule('io')
 -- sanitizeModule('lfs')
+```
 
-This allows the mission to access external scripts such as DCSServerBot.
+This allows DCS to access external scripts such as DCSServerBot.
 
-Mission Editor Installation
-Step 1 — Load DCSServerBot
+### 2. Load DCSServerBot in the mission
 
-Create a trigger:
+If you are using Discord integration, add a `MISSION START` trigger with `DO SCRIPT`:
 
-TYPE
-
-MISSION START
-
-ACTION
-
-DO SCRIPT
-
-Paste:
-
+```lua
 dofile(lfs.writedir() .. 'Scripts/net/DCSServerBot/DCSServerBot.lua')
-Step 2 — Load the Warehouse Script
+```
 
-Create another trigger:
+### 3. Load this script in the mission
 
-TYPE
+Add another `MISSION START` trigger with `DO SCRIPT FILE` and select:
 
-MISSION START
+```text
+wearhouseinv.lua
+```
 
-ACTION
+## In-Game Usage
 
-DO SCRIPT FILE
+Once the mission starts, the script automatically scans BLUE warehouses on the configured interval.
 
-Select:
+Players or admins can manually check shortages from:
 
-warehouseMonitor.lua
-In-Game Usage
+`F10 -> Other -> Check Warehouse Inventory`
 
-Once the mission starts the script will automatically begin monitoring warehouses.
+### In-game report behavior
 
-Players and admins can manually check supplies using:
+- If Discord is enabled, the in-game message shows the top shortage items only
+- The in-game message is capped by `MaxInGameReportItems`
+- The most critical items appear first
+- If there are more items than shown, the message ends with `See Discord for full list.`
+- Discord still receives the full detailed shortage list
 
-F10 → Other → Check Warehouse Inventory
+### Standalone behavior
 
-This will display a full supply report in-game.
+- If Discord is disabled and `FullInGameReportWithoutDiscord = true`, the in-game report shows the full list
+- If Discord is disabled and `FullInGameReportWithoutDiscord = false`, the in-game report still uses the short capped list
 
-Configuration
+## Configuration
 
-All configuration is located at the top of the script.
+All user-editable settings are grouped at the top of `wearhouseinv.lua`.
 
-Example:
+### Discord settings
 
+```lua
 local EnableDiscord = true
 local DiscordChannel = '12345678'
 local LogisticsRole = "<@&12345678>"
-EnableDiscord
-true  = Discord alerts enabled
-false = Standalone in-game mode only
-CheckInterval
+```
+
+- `EnableDiscord`: enable or disable Discord integration
+- `DiscordChannel`: Discord channel ID used for alerts
+- `LogisticsRole`: optional role mention for critical shortages
+
+### Check timer
+
+```lua
 local CheckInterval = 300
+```
 
-How often warehouses are scanned.
+- `300` = 5 minutes
+- `600` = 10 minutes
 
-Examples:
+### Debug settings
 
-300 = 5 minutes
-600 = 10 minutes (recommended)
-Weapon Thresholds
-WeaponThresholds = {
-LOW = 60,
-MEDIUM = 40,
-CRITICAL = 20
+```lua
+local EnableDebug = false
+local DebugToGame = false
+local DebugDisplayTime = 10
+```
+
+- `EnableDebug`: enables script debug output
+- `DebugToGame`: shows debug text in DCS with `trigger.action.outText`
+- `DebugDisplayTime`: how long debug messages stay on screen
+
+### In-game report settings
+
+```lua
+local MaxInGameReportItems = 5
+local FullInGameReportWithoutDiscord = true
+```
+
+- `MaxInGameReportItems`: number of items shown in the short in-game report
+- `FullInGameReportWithoutDiscord`: shows the full in-game report when Discord is disabled
+
+### Weapon thresholds
+
+```lua
+local WeaponThresholds = {
+	LOW = 60,
+	MEDIUM = 40,
+	CRITICAL = 20
 }
+```
 
-Defines supply warning levels for weapons.
+Weapon counts below these values are treated as shortage states.
 
-Fuel Thresholds
-FuelThresholds = {
-LOW = 50000,
-MEDIUM = 25000,
-CRITICAL = 10000
+### Fuel thresholds
+
+```lua
+local FuelThresholds = {
+	LOW = 75000,
+	MEDIUM = 50000,
+	CRITICAL = 25000
 }
+```
 
-Defines supply warning levels for fuel.
+Jet fuel amounts below these values are treated as shortage states.
 
-Example Discord Alerts
-Critical Shortage
+## Sorting and Priority
+
+Shortage items shown in-game are sorted in this order:
+
+1. `CRITICAL`
+2. `MEDIUM`
+3. Lower quantity first within the same severity
+4. Airbase name and item name as final tie-breakers
+
+This keeps the most urgent shortages at the front of the in-game message.
+
+## Example In-Game Summary
+
+```text
+Batumi AIM-120C 2 | Kobuleti Jet Fuel 12000 | Senaki GBU-12 5 | See Discord for full list.
+```
+
+## Example Discord Alerts
+
+### Critical shortage
+
+```text
 🚨 Logistics Critical
 @Logistics
 
 Kobuleti
 AIM-120C — 4
 GBU-12 — 2
-Supply Restored
+```
+
+### Supply restored
+
+```text
 ✅ Supply Restored
 
 Batumi
 Jet Fuel Restored
 AIM-120C Restored
-Use Cases
+```
 
-This script is ideal for:
+## Use Cases
 
-• Persistent multiplayer servers
-• Logistics-focused gameplay
-• Dynamic campaign missions
-• Training environments
-• Event missions with supply management
+- Persistent multiplayer servers
+- Logistics-focused gameplay
+- Dynamic campaign missions
+- Training servers
+- Event missions with supply management
 
-License
+## License
 
 Free to use, modify, and share.
 
-Credit to Doc ✪ is appreciated but not required.
+Credit to Doc is appreciated but not required.

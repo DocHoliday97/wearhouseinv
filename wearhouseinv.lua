@@ -92,22 +92,70 @@
 -------------------------------------------------
 -- DISCORD SETTINGS
 -------------------------------------------------
-local EnableDiscord = true             -- Toggle Discord alerts on/off
-local DiscordChannel = '12345678'      -- Discord channel ID where alerts will be sent
-local LogisticsRole = "<@&12345678>"   -- Discord role that will be pinged for CRITICAL shortages
+
+-- EnableDiscord:
+-- true  = send shortage alerts to Discord
+-- false = run in standalone mode with in-game reporting only
+local EnableDiscord = true
+
+-- DiscordChannel:
+-- The Discord channel ID used by DCSServerBot for alert messages.
+local DiscordChannel = '12345678'
+
+-- LogisticsRole:
+-- Optional Discord role mention used for CRITICAL alerts.
+-- Leave the format as a Discord role mention: <@&ROLE_ID>
+local LogisticsRole = "<@&12345678>"
 
 -------------------------------------------------
 -- CHECK TIMER
 -------------------------------------------------
 
-local CheckInterval = 300              -- How often warehouses are checked (seconds)
-                                       -- 300 = 5 minutes
-                                       -- 600 = 10 minutes (recommended for large servers)
+-- CheckInterval:
+-- How often the script scans all BLUE warehouses, in seconds.
+-- 300 = 5 minutes
+-- 600 = 10 minutes
+local CheckInterval = 300
+
+-------------------------------------------------
+-- DEBUG SETTINGS
+-------------------------------------------------
+
+-- EnableDebug:
+-- true  = enable extra debug output from the script
+-- false = normal operation
+local EnableDebug = false
+
+-- DebugToGame:
+-- true  = show debug text with trigger.action.outText in DCS
+-- false = suppress in-game debug text
+local DebugToGame = false
+
+-- DebugDisplayTime:
+-- How long debug messages stay visible on screen, in seconds.
+local DebugDisplayTime = 10
+
+-------------------------------------------------
+-- IN-GAME REPORT SETTINGS
+-------------------------------------------------
+
+-- MaxInGameReportItems:
+-- Maximum number of shortage items shown in the short in-game report
+-- when Discord is enabled.
+local MaxInGameReportItems = 5
+
+-- FullInGameReportWithoutDiscord:
+-- true  = if Discord is disabled, show the full in-game shortage list
+-- false = still cap the in-game list using MaxInGameReportItems
+local FullInGameReportWithoutDiscord = true
 
 -------------------------------------------------
 -- WEAPON SUPPLY THRESHOLDS
 -------------------------------------------------
 
+-- WeaponThresholds:
+-- Item amounts below these values will be treated as shortage states.
+-- CRITICAL is the highest priority and appears first in reports.
 local WeaponThresholds = {
     LOW = 60,                          -- Below this = LOW supply warning
     MEDIUM = 40,                       -- Below this = MEDIUM warning
@@ -118,16 +166,37 @@ local WeaponThresholds = {
 -- FUEL SUPPLY THRESHOLDS
 -------------------------------------------------
 
+-- FuelThresholds:
+-- Jet fuel amounts below these values will be treated as shortage states.
 local FuelThresholds = {
-    LOW = 50000,                       -- Below this = LOW fuel warning
-    MEDIUM = 25000,                    -- Below this = MEDIUM fuel warning
-    CRITICAL = 10000                   -- Below this = CRITICAL fuel shortage
+    LOW = 75000,                       -- Below this = LOW fuel warning
+    MEDIUM = 50000,                    -- Below this = MEDIUM fuel warning
+    CRITICAL = 25000                   -- Below this = CRITICAL fuel shortage
 }
+
 -------------------------------------------------
 -- STATE MEMORY (ANTI SPAM)
 -------------------------------------------------
 
 local LastState = {}
+
+-------------------------------------------------
+-- DEBUG OUTPUT
+-------------------------------------------------
+
+local function DebugOut(message)
+
+    if not EnableDebug then
+        return
+    end
+
+    if DebugToGame then
+        trigger.action.outText(
+            "WAREHOUSE DEBUG\n" .. tostring(message),
+            DebugDisplayTime
+        )
+    end
+end
 
 -------------------------------------------------
 -- PRIORITY FUNCTION
@@ -172,15 +241,93 @@ local function ProcessWeaponName(fullName)
     return shortName, category
 end
 
+local function GetSeverityRank(state)
+
+    if state == "CRITICAL" then
+        return 1
+    elseif state == "MEDIUM" then
+        return 2
+    elseif state == "LOW" then
+        return 3
+    end
+
+    return 4
+end
+
+local function AddReportItem(reportItems, airbaseName, itemName, amount, state)
+
+    reportItems[#reportItems + 1] = {
+        airbase = airbaseName,
+        name = itemName,
+        amount = amount,
+        state = state,
+        severityRank = GetSeverityRank(state)
+    }
+end
+
+local function BuildInGameReport(reportItems)
+
+    if #reportItems == 0 then
+        return ""
+    end
+
+    table.sort(reportItems, function(left, right)
+
+        if left.severityRank ~= right.severityRank then
+            return left.severityRank < right.severityRank
+        end
+
+        if left.amount ~= right.amount then
+            return left.amount < right.amount
+        end
+
+        if left.airbase ~= right.airbase then
+            return left.airbase < right.airbase
+        end
+
+        return left.name < right.name
+    end)
+
+    local showFullReport = not EnableDiscord and FullInGameReportWithoutDiscord
+    local itemCount = #reportItems
+
+    if not showFullReport then
+        itemCount = math.min(#reportItems, MaxInGameReportItems)
+    end
+
+    local parts = {}
+
+    for index = 1, itemCount do
+        local item = reportItems[index]
+        parts[#parts + 1] =
+            item.airbase ..
+            " " ..
+            item.name ..
+            " " ..
+            tostring(item.amount)
+    end
+
+    local summary = table.concat(parts, " | ")
+
+    if EnableDiscord and #reportItems > MaxInGameReportItems then
+        summary = summary .. " | See Discord for full list."
+    end
+
+    return summary
+end
+
 -------------------------------------------------
 -- MAIN CHECK
 -------------------------------------------------
 
-function CheckBlueWarehouses()
+function CheckBlueWarehouses(showReport)
+
+    showReport = showReport == true
 
     local success, err = pcall(function()
 
         local report = ""
+        local reportItems = {}
 
         local criticalEmbed = {}
         local mediumEmbed = {}
@@ -190,15 +337,27 @@ function CheckBlueWarehouses()
         local mediumChange = false
         local recoveredChange = false
 
+        local blueAirbaseCount = 0
+        local warehouseCount = 0
+        local criticalChangeCount = 0
+        local mediumChangeCount = 0
+        local recoveredChangeCount = 0
+
+        DebugOut("Warehouse scan started.")
+
         local airbases = world.getAirbases()
 
         for _, airbase in ipairs(airbases) do
 
             if airbase:getCoalition() == coalition.side.BLUE then
 
+                blueAirbaseCount = blueAirbaseCount + 1
+
                 local warehouse = airbase:getWarehouse()
 
                 if warehouse then
+
+                    warehouseCount = warehouseCount + 1
 
                     local airbaseName = airbase:getName()
 
@@ -227,6 +386,14 @@ function CheckBlueWarehouses()
                                 "\n"
 
                             criticalChange = true
+                            criticalChangeCount = criticalChangeCount + 1
+                            AddReportItem(
+                                reportItems,
+                                airbaseName,
+                                "Jet Fuel",
+                                jetFuel,
+                                fuelState
+                            )
 
                         elseif fuelState == "MEDIUM" then
 
@@ -237,6 +404,14 @@ function CheckBlueWarehouses()
                                 "\n"
 
                             mediumChange = true
+                            mediumChangeCount = mediumChangeCount + 1
+                            AddReportItem(
+                                reportItems,
+                                airbaseName,
+                                "Jet Fuel",
+                                jetFuel,
+                                fuelState
+                            )
 
                         elseif LastState[fuelID] ~= nil then
 
@@ -245,6 +420,7 @@ function CheckBlueWarehouses()
                                 "Jet Fuel Restored\n"
 
                             recoveredChange = true
+                            recoveredChangeCount = recoveredChangeCount + 1
                         end
 
                         LastState[fuelID] = fuelState
@@ -288,6 +464,14 @@ function CheckBlueWarehouses()
                                             "\n"
 
                                         criticalChange = true
+                                        criticalChangeCount = criticalChangeCount + 1
+                                        AddReportItem(
+                                            reportItems,
+                                            airbaseName,
+                                            cleanName,
+                                            amount,
+                                            state
+                                        )
 
                                     elseif state == "MEDIUM" then
 
@@ -299,6 +483,14 @@ function CheckBlueWarehouses()
                                             "\n"
 
                                         mediumChange = true
+                                        mediumChangeCount = mediumChangeCount + 1
+                                        AddReportItem(
+                                            reportItems,
+                                            airbaseName,
+                                            cleanName,
+                                            amount,
+                                            state
+                                        )
 
                                     elseif LastState[id] ~= nil then
 
@@ -308,6 +500,7 @@ function CheckBlueWarehouses()
                                             " Restored\n"
 
                                         recoveredChange = true
+                                        recoveredChangeCount = recoveredChangeCount + 1
                                     end
 
                                     LastState[id] = state
@@ -369,6 +562,8 @@ function CheckBlueWarehouses()
         -- DISCORD ALERTS
         -------------------------------------------------
 
+        report = BuildInGameReport(reportItems)
+
         if EnableDiscord then
         
             if criticalChange then
@@ -414,20 +609,36 @@ function CheckBlueWarehouses()
                 -- IN GAME REPORT
                 -------------------------------------------------
 
-                if report == "" then
-                
-                    trigger.action.outText(
-                        "All Warehouses Above Threshold",
-                        15
-                    )
-                
-                else
-                
-                    trigger.action.outText(
-                        "WAREHOUSE INVENTORY REPORT\n\n" .. report,
-                        30
-                    )
+                if showReport then
+
+                    if report == "" then
+                    
+                        trigger.action.outText(
+                            "All Warehouses Above Threshold",
+                            15
+                        )
+                    
+                    else
+                    
+                        trigger.action.outText(
+                            "WAREHOUSE INVENTORY REPORT\n\n" .. report,
+                            30
+                        )
+                    end
                 end
+
+                DebugOut(
+                    "Scan complete. Blue airbases: " ..
+                        blueAirbaseCount ..
+                        ", Warehouses: " ..
+                        warehouseCount ..
+                        ", Critical changes: " ..
+                        criticalChangeCount ..
+                        ", Medium changes: " ..
+                        mediumChangeCount ..
+                        ", Recovered changes: " ..
+                        recoveredChangeCount
+                )
             
             end)
         
@@ -447,9 +658,14 @@ function CheckBlueWarehouses()
         
     function AutoWarehouseCheck()
     
-        CheckBlueWarehouses()
+        CheckBlueWarehouses(false)
     
         return timer.getTime() + CheckInterval
+    end
+
+    local function ShowWarehouseInventoryReport()
+
+        CheckBlueWarehouses(true)
     end
     
     timer.scheduleFunction(
@@ -465,5 +681,5 @@ function CheckBlueWarehouses()
     missionCommands.addCommand(
         "Check Warehouse Inventory",
         nil,
-        CheckBlueWarehouses
+        ShowWarehouseInventoryReport
     )
